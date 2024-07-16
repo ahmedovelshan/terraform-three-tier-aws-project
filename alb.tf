@@ -10,6 +10,7 @@ resource "aws_lb" "web-alb" {
   tags = {
     Environment = "Access from www to ALB"
   }
+  depends_on = [aws_security_group.www-to-alb] 
 }
 
 resource "aws_lb_target_group" "web-tg-images" {
