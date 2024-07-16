@@ -17,6 +17,7 @@ resource "aws_subnet" "web-subnet" {
   tags = {
     Name = "${var.web-subnet-tag}-${count.index}"
   }
+  depends_on = [aws_vpc.devops-vpc]
 }
 
 #Create two subnet for db resources
@@ -30,6 +31,7 @@ resource "aws_subnet" "db-subnet" {
   tags = {
     Name = "${var.db-subnet-tag}-${count.index}"
   }
+  depends_on = [aws_vpc.devops-vpc]
 }
 
 #Create two subnet for public resources
@@ -43,6 +45,7 @@ resource "aws_subnet" "public-subnet" {
   tags = {
     Name = "${var.public-subnet-tag}-${count.index}"
   }
+  depends_on = [aws_vpc.devops-vpc]
 }
 
 
@@ -53,6 +56,7 @@ resource "aws_internet_gateway" "igw" {
   tags = {
     Name = "GW for VPC"
   }
+  depends_on = [aws_vpc.devops-vpc]
 }
 
 
@@ -60,6 +64,7 @@ resource "aws_internet_gateway" "igw" {
 resource "aws_eip" "eip" {
     domain = "vpc"
     count = 2
+    depends_on = [aws_internet_gateway.igw]
 }
 
 resource "aws_nat_gateway" "ngw" {
@@ -83,12 +88,15 @@ resource "aws_route_table" "route-ngw" {
   tags = {
     Name = "Used to access to internet via NATGW"
   }
+  depends_on = [aws_nat_gateway.ngw]
 }
 
 resource "aws_route_table_association" "rt-web" {
   count =2
   subnet_id      = aws_subnet.web-subnet[count.index].id
   route_table_id = aws_route_table.route-ngw[count.index].id
+  depends_on = [aws_route_table.route-ngw]
+  
 }
 
 
@@ -96,6 +104,7 @@ resource "aws_route_table_association" "rt-db" {
   count =2
   subnet_id      = aws_subnet.db-subnet[count.index].id
   route_table_id = aws_route_table.route-ngw[count.index].id
+  depends_on = [aws_route_table.route-ngw]
 }
 
 
@@ -111,6 +120,7 @@ resource "aws_route_table" "route-public" {
   tags = {
     Name = "Route table for public subnet"
   }
+  depends_on = [aws_internet_gateway.igw]
 }
 
 
@@ -118,4 +128,5 @@ resource "aws_route_table_association" "rt-public" {
   count = 2
   subnet_id      = aws_subnet.public-subnet[count.index].id
   route_table_id = aws_route_table.route-public.id
+  depends_on = [aws_internet_gateway.igw]
 }
