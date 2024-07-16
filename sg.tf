@@ -33,21 +33,12 @@ resource "aws_security_group" "alb-to-web" {
           cidr_blocks = var.public-subnet-cidr
         }     
     }
-    ingress {
-        protocol = "TCP"
-        from_port = 22
-        to_port = 22
-        cidr_blocks = [aws_security_group.ec2-endpoint-connection.id]
-    }
     egress {
         protocol = "-1"
         from_port = 0
         to_port = 0
         cidr_blocks = [ "0.0.0.0/0" ]
     }
-    depends_on = [
-    aws_security_group.ec2-endpoint-connection
-  ]
 }
 
 resource "aws_security_group" "web-to-db" {
@@ -69,4 +60,5 @@ resource "aws_security_group" "web-to-db" {
         to_port = 0
         cidr_blocks = [ "0.0.0.0/0" ]
     }
+    depends_on = [aws_subnet.web-subnet] 
 }
