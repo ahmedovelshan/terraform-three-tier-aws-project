@@ -24,6 +24,7 @@ resource "aws_autoscaling_group" "app-documents" {
     id      = aws_launch_template.my-ap-documents.id
     version = "$Latest"
   }
+  depends_on = [aws_launch_template.my-ap-documents] 
 }
 
 resource "aws_autoscaling_group" "app-images" {
@@ -36,4 +37,5 @@ resource "aws_autoscaling_group" "app-images" {
     id      = aws_launch_template.my-ap-images.id
     version = "$Latest"
   }
+  depends_on = [aws_launch_template.my-ap-images] 
 }
