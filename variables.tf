@@ -58,7 +58,7 @@ variable "port-1" {
 variable "port-2" {
   description = "List of ports to allow"
   type = list(string)
-  default = ["443"]
+  default = ["3306"]
 }
 
 variable "ami" {
