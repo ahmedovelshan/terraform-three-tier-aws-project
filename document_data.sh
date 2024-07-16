@@ -1,66 +1,125 @@
 #!/bin/bash
-sudo apt-get update
-sudo apt-get install -y nginx awscli
-sudo systemctl start nginx
-sudo systemctl enable nginx
+set -e
 
-# Install AWS CLI
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install 
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+sudo apt install -y nodejs
 
-# Variables for S3 bucket and directories
-s3_bucket=$(terraform output bucket_arn)
-document_directory="/var/www/html/documents"
+# Install npm packages globally
+sudo npm init -y
+sudo npm install -y express mysql
 
-# Create the directories
-sudo mkdir -p $document_directory
+# Install Apache and enable necessary modules
+sudo apt update
+sudo apt install -y apache2
+sudo a2enmod proxy proxy_http
 
-# Sync images and documents from S3 bucket to the respective directories
-sudo aws s3 sync s3://$s3_bucket/ $document_directory/
+# Create the project directory
+sudo mkdir -p /var/www/html/public
+sudo chown $USER:$USER /var/www/html/public
+cd /var/www/html/public
 
-# Get hostname and IP address
-hostname=$(hostname)
-ip_address=$(hostname -I | awk '{print $1}')
+# Initialize npm project and install packages locally
+npm init -y
+npm install express mysql
 
-# Create HTML content
-html_content="<html lang='en'>
-<head><title>Content</title></head>
+# Create the Express server script
+cat << 'EOF' > server.js
+const express = require('express');
+const mysql = require('mysql');
+const app = express();
+const port = 3000;
+
+// Create a connection to the RDS database
+const db = mysql.createConnection({
+    host: 'database-1.cp4oqcyy2y04.eu-central-1.rds.amazonaws.com',
+    user: 'admin',
+    password: '54hwlvg4Ipaf6218',
+    port: 3306,
+    database: 'mysql'
+});
+
+db.connect(err => {
+    if (err) {
+        console.error('Error connecting to the database:', err);
+        return;
+    }
+    console.log('Connected to the RDS database');
+});
+
+// Endpoint to fetch tables from the database
+app.get('/tables', (req, res) => {
+    db.query('SHOW TABLES', (error, results) => {
+        if (error) {
+            res.status(500).send('Error fetching tables');
+            return;
+        }
+        res.json(results);
+    });
+});
+
+// Serve static files (e.g., HTML, CSS, client-side scripts)
+app.use(express.static('public'));
+
+app.listen(port, () => {
+    console.log(`Server is running at http://localhost:${port}`);
+});
+EOF
+
+# Create the HTML file
+cat << 'EOF' > index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL Tables Viewer</title>
+</head>
 <body>
-<h1>Documents!</h1></br>
-<h3>(Instance Content)</h3>
-<p>Hostname: $hostname</p>
-<p>IP Address: $ip_address</p>
-<h3>Documents</h3>
-<div>"
+    <h1>MySQL Tables Viewer</h1>
+    <ul id="tables-list"></ul>
 
-
-# Add document links to HTML content
-for document in $document_directory/*; do
-    html_content="$html_content<li><a href='/documents/$(basename $document)'>$(basename $document)</a></li>"
-done
-
-html_content="$html_content</ul>
+    <script>
+        // Fetch tables from server
+        fetch('/tables')
+            .then(response => response.json())
+            .then(data => {
+                const tablesList = document.getElementById('tables-list');
+                data.forEach(table => {
+                    const li = document.createElement('li');
+                    li.textContent = table['Tables_in_mysql']; // Adjust based on your response structure
+                    tablesList.appendChild(li);
+                });
+            })
+            .catch(error => console.error('Error fetching tables:', error));
+    </script>
 </body>
-</html>"
+</html>
+EOF
 
-# Write HTML content to index.html
-echo "$html_content" | sudo tee /var/www/html/index.html
+# Configure Apache
+sudo bash -c 'cat <<EOT > /etc/apache2/sites-available/000-default.conf
+<VirtualHost *:80>
+    ServerName 172.31.17.224
 
-# Configure Nginx server block
-echo 'server {
-          listen 80 default_server;
-          listen [::]:80 default_server;
-          root /var/www/html;
-          index index.html index.htm index.nginx-debian.html;
-          server_name _;
-          location /documents/ {
-              alias /var/www/html/documents/;
-              autoindex on;
-          }
-          location / {
-              try_files $uri $uri/ =404;
-          }
-      }' | sudo tee /etc/nginx/sites-available/default
+    ProxyPreserveHost On
+    ProxyPass / http://localhost:3000/
+    ProxyPassReverse / http://localhost:3000/
 
-sudo systemctl restart nginx
+    DocumentRoot /var/www/html/public
+    <Directory /var/www/html/public>
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/my-node-app_error.log
+    CustomLog \${APACHE_LOG_DIR}/my-node-app_access.log combined
+</VirtualHost>
+EOT'
+
+# Start the Node.js server
+nohup node server.js > server.log 2>&1 &
+
+# Restart Apache to apply changes
+sudo systemctl restart apache2
